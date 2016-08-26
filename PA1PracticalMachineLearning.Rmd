@@ -1,0 +1,121 @@
+---
+# Practical Machine Learning Coursera Project 1
+
+## Data Collection:
+This is a Coursera peer assignment in which the training and test data for the project was collected from the links below:
+
+Training Data:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Test Data:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Loading and Processing Data
+
+I order to establish what features to select a data cleaning exercise was first performed. The result of the exercise was:
+- A data frame containing 19622 observations and 54 variables of the training data. 
+- A data frame containing 20 observations and 54 variables of the testing data
+The above was achieved by removing all factor variables and non-numeric variables from the datasets. 
+
+Having a large data set possibility of highly correlated variable exist. In order to establish this a correlation matrix used. A matrix of Pearson-type correlations was created for the data and highly correlated attributes where identified. 
+
+The highly correlated attributes with an absolute correlation of 0.5 or higher where removed from the dataset. 
+
+The result was a reduced dataset containing 22 features
+
+```{r, echo=TRUE}
+# Load library
+library(mlbench)
+library(caret)
+# Get the data
+training = read.csv("C:/Users/zambezis/Desktop/Data Science Coursera/Practical Machine Learning/pml-training.csv")
+testing = read.csv("C:/Users/zambezis/Desktop/Data Science Coursera/Practical Machine Learning/pml-testing.csv")
+# Remove all non-numeric and non-integer variables
+
+data_1 <- training[,7:160]
+data_2<- data_1[,-c(grep("kurtosis", colnames(data_1)))]
+data_3<- data_2[,-c(grep("skewness", colnames(data_2)))]
+data_4 <- data_3[,-c(grep("max", colnames(data_3)))]
+data_5 <- data_4[,-c(grep("min", colnames(data_4)))]
+data_6 <- data_5[,-c(grep("amplitude", colnames(data_5)))]
+data_7 <- data_6[,-c(grep("var", colnames(data_6)))]
+data_8 <- data_7[,-c(grep("avg", colnames(data_7)))]
+data_f <- data_8[,-c(grep("stddev", colnames(data_8)))]
+
+data_1T <- testing[,7:160]
+data_2T<- data_1T[,-c(grep("kurtosis", colnames(data_1T)))]
+data_3T<- data_2T[,-c(grep("skewness", colnames(data_2T)))]
+data_4T <- data_3T[,-c(grep("max", colnames(data_3T)))]
+data_5T <- data_4T[,-c(grep("min", colnames(data_4T)))]
+data_6T <- data_5T[,-c(grep("amplitude", colnames(data_5T)))]
+data_7T <- data_6T[,-c(grep("var", colnames(data_6T)))]
+data_8T <- data_7T[,-c(grep("avg", colnames(data_7T)))]
+data_fT <- data_8T[,-c(grep("stddev", colnames(data_8T)))]
+
+#processing for correlation
+correlationMatric <- cor(data_f[,1:53])
+highlyCorrelated <- findCorrelation(correlationMatric, cutoff = 0.5)
+highlyCorrelated <- sort(highlyCorrelated)
+# remove highly correlated data 
+reduced_data <- data_f[,-c(highlyCorrelated)]
+# data reduced to 22 variables/features
+# Apply same reduction method to testing data
+reduced_data2 <- data_fT[,-c(highlyCorrelated)]
+```
+
+## Split data to a validation set
+The training data was split to obtain a new training and validation set
+
+```{r, echo=TRUE}
+# create new training and validation set
+set.seed(3333)
+inTrain <- createDataPartition(y = reduced_data$classe, p = 0.7, list = FALSE)
+train <- reduced_data[inTrain,]
+validation.data <- reduced_data[-inTrain,]
+```
+
+## Random Forest Model and Feature Selection
+The Random Forest method was selected and applied to the training set. This was chosen as the preferred method for the following reason:
+- P (number of predictors) was large (54 variables), therefore a method that has a known reputation of reducing model variance was preferred 
+- No strong correlation between classe and other variables existed
+- RF is more robust to over-fitting
+- 5-fold cross-validation is applied in the RF algorithm
+
+```{r, echo = TRUE}
+modelfit <- train(classe ~ ., method = "rf", data = train, importance = T, trControl = trainControl(method = "cv", number = 5))
+df <- modelfit$finalModel
+#plot error rate per class
+plot(df, log ="y", main =  "Error rate per class")
+legend("topright", colnames(df$err.rate),col=1:4,cex=0.8,fill=1:4)
+#obtain confusion matrix
+df$confusion
+#variable importance
+var_importance <- varImp(modelfit)$importance
+varImpPlot(df, sort = TRUE, type = 1, pch = 19, col = 2, main = "Variable importance")
+```
+
+## Estimation of test error
+Futher estimation of test error was obtained by fitting the model on the validation set
+
+```{r, echo = TRUE}
+pred_1 <- predict(modelfit, newdata = validation.data)
+# get test estimate
+confusionMatrix(pred_1, validation.data$classe)
+```
+
+## Prediction 
+The random forest model was used to predict on the testing set. 
+```{r, echo= TRUE}
+# predict on testing set
+pred_2 <- predict(modelfit, newdata = reduced_data2)
+pred_2 <- as.data.frame(pred_2)
+#save predicted values
+df_3 <- cbind(testing, pred_2$pred_2)
+colnames(df_3)[161] = "problem_id"
+df_4 <- df_3[-160]
+write.csv(df_4, file = "predicted.csv")
+```
+
+## Discussion of Results
+
+### 22 predictors were used to build the random forest model with 5-fold cross validation. The OOB of error rate is 0.22%. The final model included the selection of 12 predictors. The accuracy of the model for using the 12 predictors is 0.9954 The test accuracy estimate is 0.9969. 
